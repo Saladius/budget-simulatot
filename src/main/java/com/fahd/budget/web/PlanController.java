@@ -12,10 +12,12 @@ public class PlanController {
     public PlanController(PlannerService planner){ this.planner = planner; }
 
     @GetMapping
-    public PlanResponse get(@RequestParam(required = false) Double income,
-                            @RequestParam(required = false) Double goalAmount,
-                            @RequestParam(required = false) Integer goalMonths,
-                            @RequestParam(required = false) Double groceries){
+    public PlanResponse get(
+            @RequestParam(name = "income", required = false) Double income,
+            @RequestParam(name = "goalAmount", required = false) Double goalAmount,
+            @RequestParam(name = "goalMonths", required = false) Integer goalMonths,
+            @RequestParam(name = "groceries", required = false) Double groceries
+    ) {
         return planner.computePlan(income, goalAmount, goalMonths, groceries);
     }
 }
