@@ -11,7 +11,7 @@
 
   <properties>
     <java.version>17</java.version>
-    <spring-boot.version>3.3.2</spring-boot.version>
+    <spring-boot.version>3.4.1</spring-boot.version>
   </properties>
 
   <dependencyManagement>
@@ -58,7 +58,7 @@
 
   <build>
     <plugins>
-      <!-- Ensures Java 17 source/target so records compile -->
+      <!-- Java 17 so records compile -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -68,9 +68,18 @@
         </configuration>
       </plugin>
 
+      <!-- Create an executable Spring Boot fat jar -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>3.4.1</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
