@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Simulateur de Budget</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji'; margin: 20px; background: #f8fafc; }
+    .card { background: white; border-radius: 14px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 16px; }
+    .row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    input, select, button { padding: 10px; border-radius: 10px; border: 1px solid #e5e7eb; width: 100%; }
+    button { background: #0a4c86; color: white; border: none; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 8px; }
+    tr:nth-child(even) { background: #f1f5f9; }
+    .muted { color: #6b7280; font-size: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .badge { background:#eef2ff; color:#3730a3; border-radius:999px; padding:3px 8px; font-size:12px;}
+  </style>
+</head>
+<body>
+  <h1>Simulateur de Budget</h1>
+  <div class="card">
+    <div class="row">
+      <div><label>Revenu mensuel (MAD)<br/><input id="income" type="number" value="29200"/></label></div>
+      <div><label>Objectif total (MAD)<br/><input id="goalAmount" type="number" value="50000"/></label></div>
+      <div><label>Durée (mois)<br/><input id="goalMonths" type="number" value="24"/></label></div>
+      <div><label>Courses (MAD)<br/><input id="groceries" type="number" value="6000"/></label></div>
+    </div>
+    <div style="margin-top:12px"><button id="calc">Calculer la répartition</button></div>
+    <div class="muted">Astuce : ajustez les champs et recalculez pour voir l’impact.</div>
+  </div>
+
+  <div class="card">
+    <h3>Charges fixes <span class="badge" id="fixed-total">0</span></h3>
+    <div class="row">
+      <div><input id="fx-name" placeholder="Nom (ex: Crédit voiture)"/></div>
+      <div>
+        <select id="fx-period">
+          <option value="MONTHLY" selected>Mensuel</option>
+          <option value="YEARLY">Annuel</option>
+        </select>
+      </div>
+      <div><input id="fx-amount" type="number" placeholder="Montant"/></div>
+      <div><button id="fx-add">Ajouter</button></div>
+    </div>
+    <table>
+      <thead><tr><th>Nom</th><th>Période</th><th>Montant</th><th></th></tr></thead>
+      <tbody id="fx-table"></tbody>
+    </table>
+    <div class="muted">Les montants annuels sont lissés sur 12 mois.</div>
+  </div>
+
+  <div class="card">
+    <h3>Résultat</h3>
+    <div id="result"></div>
+  </div>
+
+<script>
+async function api(path, opts={}){
+  const res = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts));
+  if(!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+async function loadProfile(){
+  try{
+    const p = await api('/api/profile');
+    document.getElementById('income').value = p.monthlyIncome ?? 0;
+    document.getElementById('goalAmount').value = p.goalAmount ?? 0;
+    document.getElementById('goalMonths').value = p.goalMonths ?? 24;
+    document.getElementById('groceries').value = p.groceries ?? 6000;
+  }catch(e){ console.warn('profile load fallback', e); }
+}
+async function saveProfile(){
+  const p = {
+    id: 1,
+    monthlyIncome: Number(document.getElementById('income').value||0),
+    goalAmount: Number(document.getElementById('goalAmount').value||0),
+    goalMonths: Number(document.getElementById('goalMonths').value||24),
+    groceries: Number(document.getElementById('groceries').value||0),
+  };
+  try { await api('/api/profile', {method:'PUT', body: JSON.stringify(p)}); } catch(e){ console.warn('profile save', e); }
+}
+async function loadFixed(){
+  const list = await api('/api/fixed-expenses');
+  const tbody = document.getElementById('fx-table'); tbody.innerHTML = '';
+  let monthly = 0;
+  for(const e of list){
+    const m = e.period==='MONTHLY' ? e.amount : e.amount/12;
+    monthly += m;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.name}</td><td>${e.period}</td><td>${e.amount}</td>
+                    <td><button data-id="${e.id}" class="fx-del">Supprimer</button></td>`;
+    tbody.appendChild(tr);
+  }
+  document.getElementById('fixed-total').textContent = Math.round(monthly) + ' MAD/mois';
+  tbody.querySelectorAll('.fx-del').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await fetch('/api/fixed-expenses/'+btn.dataset.id, {method:'DELETE'});
+      loadFixed();
+      calc();
+    });
+  });
+}
+async function addFixed(){
+  const name = document.getElementById('fx-name').value.trim();
+  const period = document.getElementById('fx-period').value;
+  const amount = Number(document.getElementById('fx-amount').value||0);
+  if(!name || amount<=0) return alert('Nom et montant requis');
+  await api('/api/fixed-expenses', {method:'POST', body: JSON.stringify({name, period, amount})});
+  document.getElementById('fx-name').value=''; document.getElementById('fx-amount').value='';
+  await loadFixed(); await calc();
+}
+async function calc(){
+  await saveProfile();
+  const q = new URLSearchParams({
+    income: document.getElementById('income').value,
+    goalAmount: document.getElementById('goalAmount').value,
+    goalMonths: document.getElementById('goalMonths').value,
+    groceries: document.getElementById('groceries').value,
+  });
+  const data = await api('/api/plan?'+q.toString());
+  const fmt = v => Math.round(v).toLocaleString('fr-FR') + ' MAD';
+  document.getElementById('result').innerHTML = `
+    <div class="grid-3">
+      <div class="card"><b>Revenu</b><br/>${fmt(data.income)}</div>
+      <div class="card"><b>Fixes</b><br/>${fmt(data.fixedTotal)}</div>
+      <div class="card"><b>Courses</b><br/>${fmt(data.groceries)}</div>
+    </div>
+    <div class="grid-3">
+      <div class="card"><b>Loisirs conseillés</b><br/>${fmt(data.leisure)}</div>
+      <div class="card"><b>Épargne requise</b><br/>${fmt(data.savingsRequired)}</div>
+      <div class="card"><b>Épargne atteinte</b><br/>${fmt(data.savingsAchieved)}</div>
+    </div>
+    <div class="card"><b>Marge / Reste</b><br/>${fmt(data.leftover)}</div>
+    <div class="muted">La logique resserre d’abord les loisirs puis, si nécessaire, les courses (plancher 4 000 MAD) pour atteindre l’objectif.</div>
+  `;
+}
+
+document.getElementById('fx-add').addEventListener('click', addFixed);
+document.getElementById('calc').addEventListener('click', calc);
+
+loadProfile().then(loadFixed).then(calc);
+</script>
+</body>
+</html>
