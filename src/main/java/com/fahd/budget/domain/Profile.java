@@ -23,6 +23,7 @@ public class Profile {
 
     public Profile() {}
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
     public double getMonthlyIncome() { return monthlyIncome; }
     public void setMonthlyIncome(double monthlyIncome) { this.monthlyIncome = monthlyIncome; }
     public double getGoalAmount() { return goalAmount; }
